@@ -53,18 +53,6 @@ void *Controlador (void * arg) {
     pthread_exit(0);
 }
 
-void *Parque (void * arg) {
-    pthread_t controladores[NUM_ENTRADAS];
-
-    int i;
-    for (i = 0; i < NUM_ENTRADAS; ++i) {
-        pthread_create(&controladores[i], NULL, Controlador, (void *) &i);
-        pthread_join(controladores[i], NULL);
-    }
-
-    pthread_exit(0);
-}
-
 int main (int argc, char* argv[]) {
 
     int numLugares;
@@ -84,8 +72,14 @@ int main (int argc, char* argv[]) {
     parqueCar.numLugares = numLugares;
     parqueCar.tempoAbertura = tempoAbertura;
 
-    pthread_t parque;
-    pthread_create(&parque, NULL, Parque, (void *) &parqueCar);
+    pthread_t controladores[NUM_ENTRADAS];
+
+    int i;
+    for (i = 0; i < NUM_ENTRADAS; ++i) {
+        pthread_create(&controladores[i], NULL, Controlador, (void *) &i);
+        pthread_join(controladores[i], NULL);
+    }
+
 
     pthread_exit(0);
 }
