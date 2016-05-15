@@ -4,6 +4,9 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/file.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #define N 0
 #define E 1
@@ -14,28 +17,18 @@
 #define FIFOPER S_IRUSR | S_IWUSR
 
 typedef struct {
+    int id;
+    char portaAcesso;
+    clock_t tempoEstacionameto;
+} infoViatura;
+
+typedef struct {
   int numLugares;
   int tempoAbertura;
 } caracteristicas;
 
-char *getFIFOPath (int num) {
-  char ori;
+char *getFIFOPath (char ori) {
   char* pathname = malloc(strlen("./fifo" + 2));
-
-  switch (num) {
-    case N:
-      ori = 'N';
-      break;
-    case E:
-      ori = 'E';
-      break;
-    case S:
-      ori = 'S';
-      break;
-    case O:
-      ori = 'O';
-      break;
-    }
 
   strncpy(pathname, "./fifo", sizeof("./fifo"));
   strncat(pathname, &ori, 1);
@@ -44,11 +37,28 @@ char *getFIFOPath (int num) {
 }
 
 void *Controlador (void * arg) {
-    int num = * (int *) arg;
-    char* pathname = getFIFOPath(num);
-    printf("Thread %d\n", num);
+    char ori = * (int *) arg;
+    char* pathname = getFIFOPath(ori);
+    printf("Thread %d\n", ori);
 
-    mkfifo(pathname, FIFOPER);
+    if (mkfifo(pathname, FIFOPER) == -1) {
+      perror(pathname);
+    }
+
+    int fd = open(pathname, O_RDONLY);
+
+    char teste[256];
+
+    while (read(fd, teste, 256) >= 0) {
+      printf("%s\n", teste);
+      if (strncmp(teste, "ACABOU", 6) == 0) {
+        printf("%c\n", ori);
+        break;
+      }
+    }
+
+    close(fd);
+    remove(pathname);
 
     pthread_exit(0);
 }
@@ -57,6 +67,7 @@ int main (int argc, char* argv[]) {
 
     int numLugares;
     int tempoAbertura;
+    char acessos[4] = "NESO";
 
     if (argc != 3)
     {
@@ -76,8 +87,17 @@ int main (int argc, char* argv[]) {
 
     int i;
     for (i = 0; i < NUM_ENTRADAS; ++i) {
-        pthread_create(&controladores[i], NULL, Controlador, (void *) &i);
-        pthread_join(controladores[i], NULL);
+        pthread_create(&controladores[i], NULL, Controlador, (void *) &acessos[i]);
+        //pthread_join(controladores[i], NULL);
+    }
+
+    sleep(tempoAbertura);
+
+    for (i = 0; i < NUM_ENTRADAS; ++i) {
+      int fd = open(getFIFOPath(acessos[i]), O_WRONLY);
+
+      write(fd, "ACABOU", sizeof("ACABOU"));
+      close(fd);
     }
 
 
