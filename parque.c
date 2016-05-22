@@ -41,8 +41,13 @@ char *getFIFOPath (char ori) {
 void *Arrumador(void * arg) {
     infoViatura infoCarro = * (infoViatura *) arg;
     
-    if (numLugares > 0)
+    if (numLugares > 0){
+        int fd = open(pathname, O_WRONLY);
+        char mensagem[32];
+        sprintf(mensagem, "Carro entrou no estacionamento\n");
+        write(fd, mensagem, sizeof(mensagem));
         numLugares--;
+    }
     
     else 
     {
@@ -55,6 +60,17 @@ void *Arrumador(void * arg) {
         write(fd, mensagem, sizeof(mensagem));
         close(fd);
     }
+    
+    clock_t tempoInicial = clock();
+    clock_t tempoFinal = tempoInicial + infoCarro.tempoEstacionameto;
+    
+    while(clock() < tempoFinal){}
+    
+    char mensagem[30];
+    sprintf(mensagem, "Carro saiu do estacionamento\n");
+    write(fd, mensagem, sizeof(mensagem));
+    close(fd);
+    numLugares++;
     
     pthread_exit(0);
 }
