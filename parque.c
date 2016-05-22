@@ -16,6 +16,8 @@
 
 #define FIFOPER S_IRUSR | S_IWUSR
 
+int numLugares;
+
 typedef struct {
     int id;
     char portaAcesso;
@@ -36,6 +38,27 @@ char *getFIFOPath (char ori) {
   return pathname;
 }
 
+void *Arrumador(void * arg) {
+    infoViatura infoCarro = * (infoViatura *) arg;
+    
+    if (numLugares > 0)
+        numLugares--;
+    
+    else 
+    {
+        char* pathname = malloc(strlen("./fifo" + 3));
+        sprintf(pathname, "./fifo%d", infoCarro.id);
+        
+        int fd = open(pathname, O_WRONLY);
+        char mensagem[32];
+        sprintf(mensagem, "Carro nao tem lugar disponivel\n");
+        write(fd, mensagem, sizeof(mensagem));
+        close(fd);
+    }
+    
+    pthread_exit(0);
+}
+
 void *Controlador (void * arg) {
     char ori = * (int *) arg;
     char* pathname = getFIFOPath(ori);
@@ -48,12 +71,14 @@ void *Controlador (void * arg) {
     int fd = open(pathname, O_RDONLY);
 
     char teste[256];
+    int r;
 
-    while (read(fd, teste, 256) >= 0) {
-      printf("%s\n", teste);
-      if (strncmp(teste, "ACABOU", 6) == 0) {
-        printf("%c\n", ori);
-        break;
+    while ((r=read(fd, teste, 256)) >= 0) {
+        if (r != 0)
+            printf("%s\n", teste);
+        if (strncmp(teste, "ACABOU", 6) == 0) {
+            printf("%c\n", ori);
+            break;
       }
     }
 
@@ -65,7 +90,6 @@ void *Controlador (void * arg) {
 
 int main (int argc, char* argv[]) {
 
-    int numLugares;
     int tempoAbertura;
     char acessos[4] = "NESO";
 
