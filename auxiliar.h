@@ -12,7 +12,11 @@
 #define PERMISSIONS S_IRUSR | S_IWUSR
 #define SEMNAME "/Semaforo"
 #define BUF_SIZE 16
+#define NSEC_PER_SEC  1000000000
 
+/*
+ * Struct que armazena informação sobre a viatura.
+ */
 typedef struct {
     int id;
     char portaAcesso;

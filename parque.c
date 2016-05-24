@@ -2,11 +2,12 @@
 
 #define NUM_ENTRADAS 4
 
-#define NSEC_PER_SEC  1000000000
-
 #define LOGNAME "parque.log"
 #define TERM_VEHICLE_ID -1
 
+/*
+ * Struct responsável por armazenar as características do parque.
+ */
 typedef struct {
   int numLugares;
   int tempoAbertura;
@@ -19,7 +20,11 @@ static sem_t *semaforo;
 static FILE *parqueLog;
 static caracteristicas parqueCar;
 
+/*
+ * Retorna o nome do fifo correspondente à orientação pretendida.
+ */
 char *getFIFOPath (char ori) {
+
   char* pathname = malloc(strlen("fifo" + 2));
 
   strncpy(pathname, "fifo", sizeof("fifo"));
@@ -29,7 +34,8 @@ char *getFIFOPath (char ori) {
 }
 
 void *Arrumador(void * arg) {
-    pthread_detach(pthread_self());
+
+    pthread_detach(pthread_self()); // Thread do tipo detached.
     int fd;
     infoViatura infoCarro = * (infoViatura *) arg;
 
@@ -43,16 +49,17 @@ void *Arrumador(void * arg) {
 
     clock_t ticks = clock() - ticksInicial;
 
-    pthread_mutex_lock(&mutArrumador);
+    /*
+     * Zona critica: verificação dos lugares vazios.
+     */
 
-    printf("%d\n", numLugares);
+    pthread_mutex_lock(&mutArrumador);
 
     if (numLugares > 0) {
         numLugares--;
         pthread_mutex_unlock(&mutArrumador);
         char mensagem[BUF_SIZE];
         sprintf(mensagem, "entrou");
-        printf("Carro %d entrou no estacionamento\n", infoCarro.id);
         fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
 
         write(fd, mensagem, BUF_SIZE);
@@ -62,7 +69,6 @@ void *Arrumador(void * arg) {
         pthread_mutex_unlock(&mutArrumador);
         char mensagem[BUF_SIZE];
         sprintf(mensagem, "cheio");
-        printf("Carro %d nao tem lugar disponivel\n", infoCarro.id);
         fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
 
         write(fd, mensagem, BUF_SIZE);
@@ -72,12 +78,18 @@ void *Arrumador(void * arg) {
         return NULL;
     }
 
+    // Espera um tempo correspondente ao tempo de estacionamento.
+
     struct timespec tempoEstacionamento;
 
     tempoEstacionamento.tv_sec = infoCarro.tempoEstacionamento / CLOCKS_PER_SEC;
     tempoEstacionamento.tv_nsec = ((float) infoCarro.tempoEstacionamento / CLOCKS_PER_SEC - tempoEstacionamento.tv_sec) * NSEC_PER_SEC;
 
     nanosleep(&tempoEstacionamento, NULL);
+
+    /*
+     * Zona critica: incrementar o numero de lugares.
+     */
 
     pthread_mutex_lock(&mutArrumador);
     numLugares++;
@@ -86,7 +98,6 @@ void *Arrumador(void * arg) {
     ticks = clock() - ticksInicial;
     char mensagem[BUF_SIZE];
     sprintf(mensagem, "saiu");
-    printf("Carro %d saiu do estacionamento\n", infoCarro.id);
     fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
 
     write(fd, mensagem, BUF_SIZE);
@@ -100,7 +111,6 @@ void *Arrumador(void * arg) {
 void *Controlador (void * arg) {
     char ori = * (int *) arg;
     char* pathname = getFIFOPath(ori);
-    printf("Thread %d\n", ori);
 
     if (mkfifo(pathname, PERMISSIONS) == -1) {
       perror(pathname);
@@ -126,15 +136,11 @@ void *Controlador (void * arg) {
       {
         if (info->id == TERM_VEHICLE_ID)
         {
-          printf("Acabou %c.\n", ori);
           free(info);
           break;
         }
 
         pthread_t id;
-        printf("ID: %d\n", info->id);
-        //printf("Porta: %c\n", info->portaAcesso);
-        printf("Tempo de Estacionamento: %d\n", (int) info->tempoEstacionamento);
         pthread_create(&id, NULL, Arrumador, (void *) info);
       }
       else if (r == -1)
@@ -217,8 +223,6 @@ int main (int argc, char* argv[]) {
 
     for (i = 0; i <  NUM_ENTRADAS; i++)
         pthread_join(controladores[i], NULL);
-
-    printf("Vai fechar o semaforo\n");
 
     sem_close(semaforo);
     sem_unlink(SEMNAME);
