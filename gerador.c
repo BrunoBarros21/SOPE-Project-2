@@ -41,6 +41,7 @@ void *gestaoEntrada(void * arg) {
 
     if (mkfifo(fifoPrivado, PERMISSIONS) == -1) {
       perror(fifoPrivado);
+      return NULL;
     }
 
     sem_wait(semaforo);
@@ -49,7 +50,7 @@ void *gestaoEntrada(void * arg) {
       close(fd);
       free(info);
       remove(fifoPrivado);
-      pthread_exit(0);
+      return NULL;
     }
     close(fd);
     sem_post(semaforo);
@@ -75,7 +76,7 @@ void *gestaoEntrada(void * arg) {
     close(fd);
     free(info);
 
-    pthread_exit(0);
+    return NULL;
 }
 
 int main (int argc, char* argv[]) {
@@ -103,9 +104,8 @@ int main (int argc, char* argv[]) {
       perror(LOGNAME);
       exit(3);
     }
-    else {
-      fprintf(parqueLog, "%-8s ; %-7s ; %-6s ; %-10s ; %-6s ; %s\n", "t(ticks)", "id_viat", "destin", "t_estacion", "t_vida", "observ");
-    }
+
+    fprintf(parqueLog, "%-8s ; %-7s ; %-6s ; %-10s ; %-6s ; %s\n", "t(ticks)", "id_viat", "destin", "t_estacion", "t_vida", "observ");
 
     srand(time(NULL));
 
