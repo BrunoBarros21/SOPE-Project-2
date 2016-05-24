@@ -76,6 +76,7 @@ void *Arrumador(void * arg) {
         sprintf(mensagem, "entrou");
         printf("Carro %d entrou no estacionamento\n", infoCarro.id);
         fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
+
         write(fd, mensagem, BUF_SIZE);
     }
     else
@@ -85,8 +86,10 @@ void *Arrumador(void * arg) {
         sprintf(mensagem, "cheio");
         printf("Carro %d nao tem lugar disponivel\n", infoCarro.id);
         fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
+
         write(fd, mensagem, BUF_SIZE);
         close(fd);
+
         remove(pathname);
         return NULL;
     }
@@ -107,6 +110,7 @@ void *Arrumador(void * arg) {
     sprintf(mensagem, "saiu");
     printf("Carro %d saiu do estacionamento\n", infoCarro.id);
     fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
+
     write(fd, mensagem, BUF_SIZE);
     close(fd);
 
