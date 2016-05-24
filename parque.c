@@ -7,6 +7,7 @@
 #include <sys/file.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <semaphore.h>
 
 #define N 0
 #define E 1
@@ -14,14 +15,16 @@
 #define O 3
 #define NUM_ENTRADAS 4
 
-#define FIFOPER S_IRUSR | S_IWUSR
-
-int numLugares;
+#define PERMISSIONS S_IRUSR | S_IWUSR
+#define SEMNAME "/Semaforo"
+#define LOGNAME "parque.log"
+#define BUF_SIZE 16
+#define TERM_VEHICLE_ID -1
 
 typedef struct {
     int id;
     char portaAcesso;
-    clock_t tempoEstacionameto;
+    clock_t tempoEstacionamento;
 } infoViatura;
 
 typedef struct {
@@ -29,49 +32,76 @@ typedef struct {
   int tempoAbertura;
 } caracteristicas;
 
-char *getFIFOPath (char ori) {
-  char* pathname = malloc(strlen("./fifo" + 2));
+static clock_t ticksInicial;
+static int numLugares;
+static pthread_mutex_t mutArrumador = PTHREAD_MUTEX_INITIALIZER;
+static sem_t *semaforo;
+static FILE *parqueLog;
+static caracteristicas parqueCar;
 
-  strncpy(pathname, "./fifo", sizeof("./fifo"));
+char *getFIFOPath (char ori) {
+  char* pathname = malloc(strlen("fifo" + 2));
+
+  strncpy(pathname, "fifo", sizeof("fifo"));
   strncat(pathname, &ori, 1);
 
   return pathname;
 }
 
 void *Arrumador(void * arg) {
+    pthread_detach(pthread_self());
+    int fd;
     infoViatura infoCarro = * (infoViatura *) arg;
-    
-    if (numLugares > 0){
-        int fd = open(pathname, O_WRONLY);
-        char mensagem[32];
-        sprintf(mensagem, "Carro entrou no estacionamento\n");
-        write(fd, mensagem, sizeof(mensagem));
+
+    char* pathname = malloc(strlen("fifo" + 3));
+    sprintf(pathname, "fifo%d", infoCarro.id);
+
+    fd = open(pathname, O_WRONLY);
+
+    clock_t ticks = clock() - ticksInicial;
+
+    pthread_mutex_lock(&mutArrumador);
+
+    printf("%d\n", numLugares);
+
+    if (numLugares > 0) {
         numLugares--;
+        pthread_mutex_unlock(&mutArrumador);
+        char mensagem[BUF_SIZE];
+        sprintf(mensagem, "entrou");
+        printf("Carro %d entrou no estacionamento\n", infoCarro.id);
+        fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
+        write(fd, mensagem, BUF_SIZE);
     }
-    
-    else 
+    else
     {
-        char* pathname = malloc(strlen("./fifo" + 3));
-        sprintf(pathname, "./fifo%d", infoCarro.id);
-        
-        int fd = open(pathname, O_WRONLY);
-        char mensagem[32];
-        sprintf(mensagem, "Carro nao tem lugar disponivel\n");
-        write(fd, mensagem, sizeof(mensagem));
+        pthread_mutex_unlock(&mutArrumador);
+        char mensagem[BUF_SIZE];
+        sprintf(mensagem, "cheio");
+        printf("Carro %d nao tem lugar disponivel\n", infoCarro.id);
+        fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
+        write(fd, mensagem, BUF_SIZE);
         close(fd);
+        remove(pathname);
+        pthread_exit(0);
     }
-    
-    clock_t tempoInicial = clock();
-    clock_t tempoFinal = tempoInicial + infoCarro.tempoEstacionameto;
-    
-    while(clock() < tempoFinal){}
-    
-    char mensagem[30];
-    sprintf(mensagem, "Carro saiu do estacionamento\n");
-    write(fd, mensagem, sizeof(mensagem));
-    close(fd);
+
+    sleep(infoCarro.tempoEstacionamento / CLOCKS_PER_SEC);
+
+    pthread_mutex_lock(&mutArrumador);
     numLugares++;
-    
+    pthread_mutex_unlock(&mutArrumador);
+
+    ticks = clock() - ticksInicial;
+    char mensagem[BUF_SIZE];
+    sprintf(mensagem, "saiu");
+    printf("Carro %d saiu do estacionamento\n", infoCarro.id);
+    fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
+    write(fd, mensagem, BUF_SIZE);
+    close(fd);
+
+    remove(pathname);
+
     pthread_exit(0);
 }
 
@@ -80,22 +110,34 @@ void *Controlador (void * arg) {
     char* pathname = getFIFOPath(ori);
     printf("Thread %d\n", ori);
 
-    if (mkfifo(pathname, FIFOPER) == -1) {
+    if (mkfifo(pathname, PERMISSIONS) == -1) {
       perror(pathname);
     }
 
     int fd = open(pathname, O_RDONLY);
-
-    char teste[256];
     int r;
 
-    while ((r=read(fd, teste, 256)) >= 0) {
-        if (r != 0)
-            printf("%s\n", teste);
-        if (strncmp(teste, "ACABOU", 6) == 0) {
-            printf("%c\n", ori);
-            break;
+    while (1)
+    {
+      infoViatura *info = malloc(sizeof(infoViatura));
+      r = read(fd, info, sizeof(*info));
+
+      if (info->id == TERM_VEHICLE_ID) {
+        printf("Acabou %c.\n", ori);
+        break;
       }
+
+      if (r > 0) {
+        pthread_t id;
+        printf("ID: %d\n", info->id);
+        printf("Porta: %c\n", info->portaAcesso);
+        printf("Tempo de Estacionamento: %d\n", (int) info->tempoEstacionamento);
+        pthread_create(&id, NULL, Arrumador, (void *) info);
+      }
+      else {
+        free(info);
+      }
+
     }
 
     close(fd);
@@ -119,27 +161,45 @@ int main (int argc, char* argv[]) {
     numLugares = (int) strtol(argv[1], NULL, 10);
     tempoAbertura = (int) strtol(argv[2], NULL, 10);
 
-    caracteristicas parqueCar;
     parqueCar.numLugares = numLugares;
     parqueCar.tempoAbertura = tempoAbertura;
 
+    if ((semaforo = sem_open(SEMNAME, O_CREAT, PERMISSIONS, 1)) == SEM_FAILED) {
+      perror("Semaforo");
+      exit(2);
+    }
+
     pthread_t controladores[NUM_ENTRADAS];
 
+    if ((parqueLog = fopen(LOGNAME, "w")) == NULL) {
+      perror(LOGNAME);
+      exit(3);
+    }
+    else {
+      fprintf(parqueLog, "%-8s ; %-4s ; %-7s ; %s\n", "t(ticks)", "nlug", "id_viat", "observ");
+    }
+
+    ticksInicial = clock();
     int i;
     for (i = 0; i < NUM_ENTRADAS; ++i) {
         pthread_create(&controladores[i], NULL, Controlador, (void *) &acessos[i]);
-        //pthread_join(controladores[i], NULL);
     }
 
-    sleep(tempoAbertura);
+    sleep(parqueCar.tempoAbertura);
+
+    infoViatura *viaturaFecho = malloc(sizeof(infoViatura));
+    viaturaFecho->id = TERM_VEHICLE_ID;
 
     for (i = 0; i < NUM_ENTRADAS; ++i) {
+      sem_wait(semaforo);
       int fd = open(getFIFOPath(acessos[i]), O_WRONLY);
-
-      write(fd, "ACABOU", sizeof("ACABOU"));
+      write(fd, viaturaFecho, sizeof(*viaturaFecho));
       close(fd);
+      sem_post(semaforo);
     }
 
+    sem_close(semaforo);
+    sem_unlink(SEMNAME);
 
     pthread_exit(0);
 }
