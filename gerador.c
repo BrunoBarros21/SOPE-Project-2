@@ -31,8 +31,8 @@ void *gestaoEntrada(void * arg) {
     clock_t tempoInicial = clock();
     clock_t ticks;
     infoViatura * info = (infoViatura *) arg;
-    printf("Entrada: %c\nTempo Estacionamento: %f\nID: %d\n\n", info->portaAcesso, (float)info->tempoEstacionamento / CLOCKS_PER_SEC, info->id);
-
+    //printf("Entrada: %c\nTempo Estacionamento: %f\nID: %d\n\n", info->portaAcesso, (float)info->tempoEstacionamento / CLOCKS_PER_SEC, info->id);
+    printf("Começou a viatura %d\n", info->id);
     char pathname[7];
     sprintf(pathname, "fifo%c", info->portaAcesso);
 
@@ -44,16 +44,29 @@ void *gestaoEntrada(void * arg) {
       return NULL;
     }
 
+    printf("Chegou aos semaforos da viatura %d\n", info->id);
+
     sem_wait(semaforo);
-    int fd = open(pathname, O_WRONLY);
-    if (write(fd, info, sizeof(infoViatura)) == -1) {
-      close(fd);
+    int fd;
+    if ((fd = open(pathname, O_WRONLY)) == -1) {
+      sem_post(semaforo);
+      unlink(fifoPrivado);
+      printf("Erro no open da viatura %d\n", info->id);
       free(info);
+      return NULL;
+    }
+    if (write(fd, info, sizeof(infoViatura)) == -1) {
+      sem_post(semaforo);
+      close(fd);
       remove(fifoPrivado);
+      printf("Erro no write da viatura %d\n", info->id);
+      free(info);
       return NULL;
     }
     close(fd);
     sem_post(semaforo);
+
+    printf("Passou os semaforos da viatura %d\n", info->id);
 
     fd = open(fifoPrivado, O_RDONLY);
     char mensagem[BUF_SIZE];
@@ -74,6 +87,9 @@ void *gestaoEntrada(void * arg) {
     }
 
     close(fd);
+
+    printf("Acabou a viatura %d\n", info->id);
+
     free(info);
 
     return NULL;
@@ -129,7 +145,7 @@ int main (int argc, char* argv[]) {
             viatura->tempoEstacionamento = tempoEstacionamento * uniRelogio;
             viatura->id = idViatura++;
 
-            printf("%d\n", viatura->id);
+            //printf("%d\n", viatura->id);
 
             pthread_t entrada;
             pthread_create(&entrada, NULL, gestaoEntrada, (void *) viatura);
@@ -139,13 +155,17 @@ int main (int argc, char* argv[]) {
             indiceProximo = rand() % 10;
             proximo = probabilidades[indiceProximo] * uniRelogio;
 
-            printf("%d\n", proximo);
+            //printf("%d\n", proximo);
         }
 
     } while(fim - inicio < duracao);
 
+    printf("vai fechar semaforo\n");
+
     sem_close(semaforo);
     sem_unlink(SEMNAME);
+
+    printf("vai sair\n");
 
     pthread_exit(0);
   }

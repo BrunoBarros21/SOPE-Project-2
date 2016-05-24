@@ -58,7 +58,10 @@ void *Arrumador(void * arg) {
     char* pathname = malloc(strlen("fifo" + 3));
     sprintf(pathname, "fifo%d", infoCarro.id);
 
-    fd = open(pathname, O_WRONLY);
+    if ((fd = open(pathname, O_WRONLY)) == -1) {
+      perror(pathname);
+      return NULL;
+    }
 
     clock_t ticks = clock() - ticksInicial;
 
@@ -85,7 +88,7 @@ void *Arrumador(void * arg) {
         write(fd, mensagem, BUF_SIZE);
         close(fd);
         remove(pathname);
-        pthread_exit(0);
+        return NULL;
     }
 
     struct timespec tempoEstacionamento;
@@ -119,9 +122,17 @@ void *Controlador (void * arg) {
 
     if (mkfifo(pathname, PERMISSIONS) == -1) {
       perror(pathname);
+      return NULL;
     }
 
     int fd = open(pathname, O_RDONLY);
+    if (fd == -1)
+    {
+      perror(pathname);
+      unlink(pathname);
+      return NULL;
+    }
+
     int r;
 
     while (1)
@@ -129,22 +140,29 @@ void *Controlador (void * arg) {
       infoViatura *info = malloc(sizeof(infoViatura));
       r = read(fd, info, sizeof(*info));
 
-      if (info->id == TERM_VEHICLE_ID) {
-        printf("Acabou %c.\n", ori);
-        break;
-      }
+      if (r > 0)
+      {
+        if (info->id == TERM_VEHICLE_ID)
+        {
+          printf("Acabou %c.\n", ori);
+          free(info);
+          break;
+        }
 
-      if (r > 0) {
         pthread_t id;
         printf("ID: %d\n", info->id);
-        printf("Porta: %c\n", info->portaAcesso);
+        //printf("Porta: %c\n", info->portaAcesso);
         printf("Tempo de Estacionamento: %d\n", (int) info->tempoEstacionamento);
         pthread_create(&id, NULL, Arrumador, (void *) info);
       }
-      else {
+      else if (r == -1)
+      {
+        perror(pathname);
         free(info);
+        close(fd);
+        unlink(pathname);
+        return NULL;
       }
-
     }
 
     close(fd);
@@ -206,6 +224,7 @@ int main (int argc, char* argv[]) {
       char* pathname = malloc(strlen("fifo" + 2));
       pathname = getFIFOPath(acessos[i]);
       if ((fd = open(pathname, O_WRONLY)) == -1) {
+        sem_post(semaforo);
         perror(pathname);
         exit(5);
       }
@@ -213,6 +232,11 @@ int main (int argc, char* argv[]) {
       close(fd);
       sem_post(semaforo);
     }
+
+    for (i = 0; i <  NUM_ENTRADAS; i++)
+        pthread_join(controladores[i], NULL);
+
+    printf("Vai fechar o semaforo\n");
 
     sem_close(semaforo);
     sem_unlink(SEMNAME);
