@@ -26,13 +26,20 @@ static sem_t *semaforo;
 static FILE *parqueLog;
 static clock_t ticksInicial;
 
+void logGerador(int ticks, int id, char porta, int tempoEstacionamento, int tempoVida, char* mensagem) {
+  if (tempoVida == -1)
+    fprintf(parqueLog, "%-8d ; %-7d ; %-6c ; %-10d ; %-8c ; %s\n", ticks, id, porta, tempoEstacionamento, '?', mensagem);
+  else
+    fprintf(parqueLog, "%-8d ; %-7d ; %-6c ; %-10d ; %-8d ; %s\n", ticks, id, porta, tempoEstacionamento, tempoVida, mensagem);
+
+  return;
+}
+
 void *gestaoEntrada(void * arg) {
     pthread_detach(pthread_self());
     clock_t tempoInicial = clock();
     clock_t ticks;
     infoViatura * info = (infoViatura *) arg;
-    //printf("Entrada: %c\nTempo Estacionamento: %f\nID: %d\n\n", info->portaAcesso, (float)info->tempoEstacionamento / CLOCKS_PER_SEC, info->id);
-    printf("Começou a viatura %d\n", info->id);
     char pathname[7];
     sprintf(pathname, "fifo%c", info->portaAcesso);
 
@@ -44,14 +51,11 @@ void *gestaoEntrada(void * arg) {
       return NULL;
     }
 
-    printf("Chegou aos semaforos da viatura %d\n", info->id);
-
     sem_wait(semaforo);
     int fd;
     if ((fd = open(pathname, O_WRONLY)) == -1) {
       sem_post(semaforo);
       unlink(fifoPrivado);
-      printf("Erro no open da viatura %d\n", info->id);
       free(info);
       return NULL;
     }
@@ -59,14 +63,11 @@ void *gestaoEntrada(void * arg) {
       sem_post(semaforo);
       close(fd);
       remove(fifoPrivado);
-      printf("Erro no write da viatura %d\n", info->id);
       free(info);
       return NULL;
     }
     close(fd);
     sem_post(semaforo);
-
-    printf("Passou os semaforos da viatura %d\n", info->id);
 
     fd = open(fifoPrivado, O_RDONLY);
     char mensagem[BUF_SIZE];
@@ -74,22 +75,18 @@ void *gestaoEntrada(void * arg) {
 
     if (strcmp(mensagem, "entrou") == 0) {
       ticks = clock() - ticksInicial;
-      fprintf(parqueLog, "%-8d ; %-7d ; %-6c ; %-10d ; %-6c ; %s\n", (int) ticks, info->id, info->portaAcesso, (int) info->tempoEstacionamento, '?', mensagem);
-
+      logGerador((int) ticks, info->id, info->portaAcesso, (int) info->tempoEstacionamento, -1, mensagem);
       read(fd, mensagem, BUF_SIZE);
       ticks = clock() - ticksInicial;
       clock_t tempoVida = clock() - tempoInicial;
-      fprintf(parqueLog, "%-8d ; %-7d ; %-6c ; %-10d ; %-6d ; %s\n", (int) ticks, info->id, info->portaAcesso, (int) info->tempoEstacionamento, (int) tempoVida, mensagem);
+      logGerador((int) ticks, info->id, info->portaAcesso, (int) info->tempoEstacionamento, (int) tempoVida, mensagem);
     }
     else if (strcmp(mensagem, "cheio") == 0) {
       ticks = clock() - ticksInicial;
-      fprintf(parqueLog, "%-8d ; %-7d ; %-6c ; %-10d ; %-6c ; %s\n", (int) ticks, info->id, info->portaAcesso, (int) info->tempoEstacionamento, '?', mensagem);
+      logGerador((int) ticks, info->id, info->portaAcesso, (int) info->tempoEstacionamento, -1, mensagem);
     }
 
     close(fd);
-
-    printf("Acabou a viatura %d\n", info->id);
-
     free(info);
 
     return NULL;
@@ -121,7 +118,8 @@ int main (int argc, char* argv[]) {
       exit(3);
     }
 
-    fprintf(parqueLog, "%-8s ; %-7s ; %-6s ; %-10s ; %-6s ; %s\n", "t(ticks)", "id_viat", "destin", "t_estacion", "t_vida", "observ");
+    // Write log file header
+    fprintf(parqueLog, "%-8s ; %-7s ; %-6s ; %-10s ;  %-6s  ; %s\n", "t(ticks)", "id_viat", "destin", "t_estacion", "t_vida", "observ");
 
     srand(time(NULL));
 
@@ -145,8 +143,6 @@ int main (int argc, char* argv[]) {
             viatura->tempoEstacionamento = tempoEstacionamento * uniRelogio;
             viatura->id = idViatura++;
 
-            //printf("%d\n", viatura->id);
-
             pthread_t entrada;
             pthread_create(&entrada, NULL, gestaoEntrada, (void *) viatura);
 
@@ -154,18 +150,12 @@ int main (int argc, char* argv[]) {
 
             indiceProximo = rand() % 10;
             proximo = probabilidades[indiceProximo] * uniRelogio;
-
-            //printf("%d\n", proximo);
         }
 
     } while(fim - inicio < duracao);
 
-    printf("vai fechar semaforo\n");
-
     sem_close(semaforo);
     sem_unlink(SEMNAME);
-
-    printf("vai sair\n");
 
     pthread_exit(0);
   }
