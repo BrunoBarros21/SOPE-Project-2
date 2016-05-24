@@ -15,6 +15,8 @@
 #define O 3
 #define NUM_ENTRADAS 4
 
+#define NSEC_PER_SEC  1000000000
+
 #define PERMISSIONS S_IRUSR | S_IWUSR
 #define SEMNAME "/Semaforo"
 #define LOGNAME "parque.log"
@@ -86,7 +88,12 @@ void *Arrumador(void * arg) {
         pthread_exit(0);
     }
 
-    sleep(infoCarro.tempoEstacionamento / CLOCKS_PER_SEC);
+    struct timespec tempoEstacionamento;
+
+    tempoEstacionamento.tv_sec = infoCarro.tempoEstacionamento / CLOCKS_PER_SEC;
+    tempoEstacionamento.tv_nsec = ((float) infoCarro.tempoEstacionamento / CLOCKS_PER_SEC - tempoEstacionamento.tv_sec) * NSEC_PER_SEC;
+
+    nanosleep(&tempoEstacionamento, NULL);
 
     pthread_mutex_lock(&mutArrumador);
     numLugares++;
@@ -175,14 +182,17 @@ int main (int argc, char* argv[]) {
       perror(LOGNAME);
       exit(3);
     }
-    else {
-      fprintf(parqueLog, "%-8s ; %-4s ; %-7s ; %s\n", "t(ticks)", "nlug", "id_viat", "observ");
-    }
+
+    fprintf(parqueLog, "%-8s ; %-4s ; %-7s ; %s\n", "t(ticks)", "nlug", "id_viat", "observ");
 
     ticksInicial = clock();
+
     int i;
     for (i = 0; i < NUM_ENTRADAS; ++i) {
-        pthread_create(&controladores[i], NULL, Controlador, (void *) &acessos[i]);
+        if (pthread_create(&controladores[i], NULL, Controlador, (void *) &acessos[i]) != 0) {
+          perror("Controlador");
+          exit(4);
+        }
     }
 
     sleep(parqueCar.tempoAbertura);
@@ -192,7 +202,13 @@ int main (int argc, char* argv[]) {
 
     for (i = 0; i < NUM_ENTRADAS; ++i) {
       sem_wait(semaforo);
-      int fd = open(getFIFOPath(acessos[i]), O_WRONLY);
+      int fd;
+      char* pathname = malloc(strlen("fifo" + 2));
+      pathname = getFIFOPath(acessos[i]);
+      if ((fd = open(pathname, O_WRONLY)) == -1) {
+        perror(pathname);
+        exit(5);
+      }
       write(fd, viaturaFecho, sizeof(*viaturaFecho));
       close(fd);
       sem_post(semaforo);

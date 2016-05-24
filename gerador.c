@@ -45,7 +45,12 @@ void *gestaoEntrada(void * arg) {
 
     sem_wait(semaforo);
     int fd = open(pathname, O_WRONLY);
-    write(fd, info, sizeof(infoViatura));
+    if (write(fd, info, sizeof(infoViatura)) == -1) {
+      close(fd);
+      free(info);
+      remove(fifoPrivado);
+      pthread_exit(0);
+    }
     close(fd);
     sem_post(semaforo);
 
@@ -65,12 +70,10 @@ void *gestaoEntrada(void * arg) {
     else if (strcmp(mensagem, "cheio") == 0) {
       ticks = clock() - ticksInicial;
       fprintf(parqueLog, "%-8d ; %-7d ; %-6c ; %-10d ; %-6c ; %s\n", (int) ticks, info->id, info->portaAcesso, (int) info->tempoEstacionamento, '?', mensagem);
-
     }
 
     close(fd);
     free(info);
-
 
     pthread_exit(0);
 }
@@ -144,5 +147,5 @@ int main (int argc, char* argv[]) {
     sem_close(semaforo);
     sem_unlink(SEMNAME);
 
-    return 0;
+    pthread_exit(0);
   }
