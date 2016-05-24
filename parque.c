@@ -1,33 +1,11 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <pthread.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/file.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <semaphore.h>
+#include "auxiliar.h"
 
-#define N 0
-#define E 1
-#define S 2
-#define O 3
 #define NUM_ENTRADAS 4
 
 #define NSEC_PER_SEC  1000000000
 
-#define PERMISSIONS S_IRUSR | S_IWUSR
-#define SEMNAME "/Semaforo"
 #define LOGNAME "parque.log"
-#define BUF_SIZE 16
 #define TERM_VEHICLE_ID -1
-
-typedef struct {
-    int id;
-    char portaAcesso;
-    clock_t tempoEstacionamento;
-} infoViatura;
 
 typedef struct {
   int numLugares;
