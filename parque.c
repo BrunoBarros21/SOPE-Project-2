@@ -58,7 +58,10 @@ void *Arrumador(void * arg) {
     char* pathname = malloc(strlen("fifo" + 3));
     sprintf(pathname, "fifo%d", infoCarro.id);
 
-    fd = open(pathname, O_WRONLY);
+    if ((fd = open(pathname, O_WRONLY)) == -1){
+        perror(pathname);
+        return NULL;
+    }
 
     clock_t ticks = clock() - ticksInicial;
 
@@ -73,6 +76,7 @@ void *Arrumador(void * arg) {
         sprintf(mensagem, "entrou");
         printf("Carro %d entrou no estacionamento\n", infoCarro.id);
         fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
+        
         write(fd, mensagem, BUF_SIZE);
     }
     else
@@ -82,8 +86,10 @@ void *Arrumador(void * arg) {
         sprintf(mensagem, "cheio");
         printf("Carro %d nao tem lugar disponivel\n", infoCarro.id);
         fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
+        
         write(fd, mensagem, BUF_SIZE);
         close(fd);
+            
         remove(pathname);
         pthread_exit(0);
     }
@@ -104,6 +110,7 @@ void *Arrumador(void * arg) {
     sprintf(mensagem, "saiu");
     printf("Carro %d saiu do estacionamento\n", infoCarro.id);
     fprintf(parqueLog, "%-8d ; %-4d ; %-7d ; %s\n", (int) ticks, parqueCar.numLugares - numLugares, infoCarro.id, mensagem);
+    
     write(fd, mensagem, BUF_SIZE);
     close(fd);
 
@@ -119,6 +126,7 @@ void *Controlador (void * arg) {
 
     if (mkfifo(pathname, PERMISSIONS) == -1) {
       perror(pathname);
+      return NULL;
     }
 
     int fd = open(pathname, O_RDONLY);
@@ -132,6 +140,7 @@ void *Controlador (void * arg) {
       if (info->id == TERM_VEHICLE_ID) {
         printf("Acabou %c.\n", ori);
         break;
+      return NULL;
       }
 
       if (r > 0) {
